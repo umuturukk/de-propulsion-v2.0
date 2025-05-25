@@ -33,11 +33,11 @@ SFOC_DATA_MAIN_DE_GEN = {
 
 # Liman Jeneratörü (DE Sistemindeki küçük yardımcı/manevra jeneratörü) için SFOC Verileri
 SFOC_DATA_PORT_GEN = {
-    25: 213,
-    50: 194,
-    75: 188,
-    85: 183,
-    100: 185
+    25: 202,
+    50: 186,
+    75: 182,
+    85: 185,
+    100: 189
 }
 
 # Yardımcı Dizel Jeneratörler (Geleneksel sistemin manevradaki yardımcıları) için SFOC Verileri

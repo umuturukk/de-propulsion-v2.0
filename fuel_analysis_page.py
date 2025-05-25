@@ -11,6 +11,7 @@ from config import (
     SFOC_DATA_MAIN_ENGINE,
     SFOC_DATA_AUX_DG,
     SFOC_DATA_MAIN_DE_GEN,
+    SFOC_DATA_PORT_GEN,
     ALL_SFOC_CURVES
 )
 from core_calculations import (
@@ -311,8 +312,8 @@ def render_page():
     st.markdown("---")
     st.subheader("Özgül Yakıt Tüketimi (SFOC) - Yük Eğrisi (Genel)")
     # Global SFOC verisini ve interpolate_sfoc_non_linear fonksiyonunu kullan
-    loads_original = list(SFOC_DATA_AUX_DG.keys())
-    sfocs_original = list(SFOC_DATA_AUX_DG.values())
+    loads_original = list(SFOC_DATA_PORT_GEN.keys())
+    sfocs_original = list(SFOC_DATA_PORT_GEN.values())
     sorted_indices = np.argsort(loads_original)
     sorted_loads_original = np.array(loads_original)[sorted_indices]
     sorted_sfocs_original = np.array(sfocs_original)[sorted_indices]
@@ -320,7 +321,7 @@ def render_page():
     df_sfoc_points = pd.DataFrame({'Yük (%)': sorted_loads_original, 'SFOC (g/kWh)': sorted_sfocs_original})
     plot_min_load, plot_max_load = 0, 110 # Grafik için yük aralığı
     interpolated_loads = np.linspace(plot_min_load, plot_max_load, 200) # Eğri için daha sık noktalar
-    interpolated_sfocs = [interpolate_sfoc_non_linear(load, SFOC_DATA_AUX_DG) for load in interpolated_loads]
+    interpolated_sfocs = [interpolate_sfoc_non_linear(load, SFOC_DATA_PORT_GEN) for load in interpolated_loads]
 
     # Geçerli (None olmayan ve makul) SFOC değerlerini filtrele
     valid_interpolated_data = [(load, sfoc) for load, sfoc in zip(interpolated_loads, interpolated_sfocs) if sfoc is not None and sfoc >= 50]
