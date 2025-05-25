@@ -5,9 +5,16 @@ import numpy as np
 import plotly.express as px
 
 # Proje içi modüllerden importlar
-from config import sfoc_data_global, CONVENTIONAL_SHAFT_EFFICIENCY, PROPULSION_PATH_INV_EFFICIENCY
+# DEĞİŞİKLİK: İlgili SFOC verileri ve ALL_SFOC_CURVES import ediliyor
+from config import (
+    CONVENTIONAL_SHAFT_EFFICIENCY,
+    PROPULSION_PATH_INV_EFFICIENCY,
+    SFOC_DATA_MAIN_ENGINE,
+    SFOC_DATA_AUX_DG,
+    ALL_SFOC_CURVES
+)
 from core_calculations import (
-    calculate_fuel, # Ana makine referansı için
+    calculate_fuel,
     get_best_combination
 )
 
@@ -16,14 +23,14 @@ def render_page():
     st.header("Yeni Jeneratör Kombinasyonları Analizi")
 
     st.sidebar.header("Yeni Kombinasyon Girdi Ayarları")
-    # Widget'lar için benzersiz key'ler
+    # Widget'lar orijinal haliyle korunuyor
     main_gen_mcr_new = st.sidebar.number_input("Ana Jeneratör MCR (kW)", min_value=100, value=2400, step=100, key="nc_main_gen_mcr")
     main_gen_qty_new = st.sidebar.number_input("Ana Jeneratör Adedi", min_value=1, value=3, step=1, key="nc_main_gen_qty")
     port_gen_mcr_new = st.sidebar.number_input("Liman Jeneratörü MCR (kW)", min_value=50, value=1000, step=50, key="nc_port_gen_mcr")
     port_gen_qty_new = st.sidebar.number_input("Liman Jeneratörü Adedi", min_value=0, value=1, step=1, key="nc_port_gen_qty")
 
-    sea_power_range_new = st.sidebar.slider("Seyir Şaft Güç Aralığı (kW)", 2500, 5500, (3000, 4400), step=100, key="nc_sea_power_range") # Etikette (Pervane) ibaresi yoktu, ekledim. Orijinalde yoksa kaldırabilirsiniz.
-    maneuver_power_range_new = st.sidebar.slider("Manevra Şaft Güç Aralığı (kW)", 1500, 3500, (1600, 2700), step=100, key="nc_maneuver_power_range") # Etikette (Pervane) ibaresi yoktu, ekledim.
+    sea_power_range_new = st.sidebar.slider("Seyir Şaft Güç Aralığı (kW)", 2500, 5500, (3000, 4400), step=100, key="nc_sea_power_range")
+    maneuver_power_range_new = st.sidebar.slider("Manevra Şaft Güç Aralığı (kW)", 1500, 3500, (1600, 2700), step=100, key="nc_maneuver_power_range")
     sea_duration_new = st.sidebar.number_input("Seyir Süresi (saat)", min_value=1.0, value=48.0, step=1.0, key="nc_sea_duration")
     maneuver_duration_new = st.sidebar.number_input("Manevra Süresi (saat)", min_value=1.0, value=4.0, step=1.0, key="nc_maneuver_duration")
     main_engine_mcr_ref_new = st.sidebar.number_input("Ana Makine MCR (kW) (Referans İçin)", min_value=1000, value=7200, step=100, key="nc_main_engine_mcr_ref")
@@ -36,27 +43,17 @@ def render_page():
         min_value=0, value=300, step=50, key="nc_aux_power"
     )
 
-
     st.sidebar.subheader("Sistem Verimlilikleri (%) (Yeni Kombinasyon İçin)")
-    # Orijinal kodunuzdaki verimlilik girdileri:
     motor_eff_new_perc = st.sidebar.slider("Yeni - Elektrik Motoru Verimliliği (%)", 90.0, 99.9, 97.0, step=0.1, key="nc_motor_eff_slider")
     converter_eff_new_perc = st.sidebar.slider("Yeni - Frekans Dönüştürücü Verimliliği (%)", 90.0, 99.9, 98.5, step=0.1, key="nc_converter_eff_slider")
     switchboard_eff_new_perc = st.sidebar.slider("Yeni - Main Switchboard Verimliliği (%)", 90.0, 99.9, 99.5, step=0.1, key="nc_switchboard_eff_slider")
-    generator_elec_eff_new_perc = st.sidebar.slider("Yeni - Alternatör Verimliliği (%)", 90.0, 99.9, 98.0, step=0.1, key="nc_generator_elec_eff_slider") # Orijinalde "generator_elec_eff_new_slider", burada "nc_..." kullandım. Key'i düzelttim.
+    generator_elec_eff_new_perc = st.sidebar.slider("Yeni - Alternatör Verimliliği (%)", 90.0, 99.9, 98.0, step=0.1, key="nc_generator_elec_eff_slider")
 
-    # Orijinal kodunuzdaki total_elec_eff_new_factor hesaplaması:
-    total_elec_eff_new_factor = (motor_eff_new_perc / 100.0) * \
-                                (converter_eff_new_perc / 100.0) * \
-                                (switchboard_eff_new_perc / 100.0) * \
-                                (generator_elec_eff_new_perc / 100.0)
+    total_elec_eff_new_factor = (motor_eff_new_perc / 100.0) * (converter_eff_new_perc / 100.0) * (switchboard_eff_new_perc / 100.0) * (generator_elec_eff_new_perc / 100.0)
 
-    if total_elec_eff_new_factor <= 1e-6: # Orijinal kodunuzdaki uyarı
+    if total_elec_eff_new_factor <= 1e-6:
         st.warning("Yeni Kombinasyon için toplam sistem verimliliği (motor*conv*pano*alt) sıfıra çok yakın veya sıfır. Lütfen verimlilikleri kontrol edin.")
-        # Hata vermemesi için küçük bir değere ayarla, ancak sonuçlar çok büyük çıkacaktır.
-        # Bu durum, hesaplama fonksiyonu içinde de ayrıca ele alınabilir.
-        # total_elec_eff_new_factor = 1e-6 # Bu satır, uyarıya rağmen hesaplamanın devam etmesini sağlar.
 
-    # Session state başlatma
     if "nc_results_df" not in st.session_state: st.session_state.nc_results_df = pd.DataFrame()
     if "nc_detailed_df" not in st.session_state: st.session_state.nc_detailed_df = pd.DataFrame()
     if "nc_usage_df" not in st.session_state: st.session_state.nc_usage_df = pd.DataFrame()
@@ -68,11 +65,11 @@ def render_page():
         p_sea_power_range, p_maneuver_power_range,
         p_sea_duration, p_maneuver_duration,
         p_main_engine_mcr_ref,
-        p_total_elec_eff_factor_arg,      # SADECE Seyir DE ana tahrik hesabı için kullanılır
-        p_conventional_shaft_eff_arg,   # SADECE Seyir DE ana tahrik hesabı için kullanılır (config'den CONVENTIONAL_SHAFT_EFFICIENCY)
-        p_sfoc_data,
-        p_current_aux_power_demand_kw,    # Hem seyir hem manevra için ortak yardımcı güç
-        p_current_conv_aux_dg_mcr_kw    # Geleneksel manevra için yardımcı DG MCR'ı
+        p_total_elec_eff_factor_arg,
+        p_conventional_shaft_eff_arg,
+        # DEĞİŞİKLİK: p_sfoc_data argümanı kaldırıldı, artık kullanılmıyor.
+        p_current_aux_power_demand_kw,
+        p_current_conv_aux_dg_mcr_kw
     ):
         results_summary_list = []
         detailed_data_list = []
@@ -80,14 +77,15 @@ def render_page():
 
         # --- 1. Ana Makine Referans Tüketimini Hesapla ---
         total_sea_fuel_main_engine_ref = 0
-        # ME Seyir hesaplaması (DEĞİŞİKLİK YOK)
         for shaft_power in range(p_sea_power_range[0], p_sea_power_range[1] + 100, 100):
             if shaft_power <= 0 or p_main_engine_mcr_ref <= 0: continue
             load = (shaft_power / p_main_engine_mcr_ref) * 100
             if load > 0:
-                fuel = calculate_fuel(shaft_power, load, p_sea_duration, p_sfoc_data)
+                # DEĞİŞİKLİK: Geleneksel ana makine için doğru SFOC verisi kullanılıyor.
+                fuel = calculate_fuel(shaft_power, load, p_sea_duration, SFOC_DATA_MAIN_ENGINE)
                 if fuel > 0:
                     total_sea_fuel_main_engine_ref += fuel
+                    # Orijinal koddaki gibi listeye ekleme
                     detailed_data_list.append({
                         "Combo": "Ana Makine Referans", "SpecificComboUsed": "Ana Makine Referans", "Mode": "Seyir",
                         "Shaft Power (kW)": shaft_power, "Required DE Power (kW)": np.nan,
@@ -96,7 +94,6 @@ def render_page():
                         "OriginalMainOnlyFuel (ton)": np.nan, "OriginalMainOnlyLabel": np.nan, "IsAssisted": False
                     })
         
-        # ME Manevra + Aux DG hesaplaması (GÜNCELLENDİ - "Yakıt Analizi" sayfasındaki mantıkla BİREBİR AYNI)
         total_maneuver_fuel_main_engine_ref = 0
         SABIT_YARDIMCI_DG_SAYISI_MANEVRA_REF = 2
         for shaft_power_maneuver_ref in range(p_maneuver_power_range[0], p_maneuver_power_range[1] + 100, 100):
@@ -105,22 +102,25 @@ def render_page():
             main_engine_load_maneuver_ref = 0
             if p_main_engine_mcr_ref > 0:
                  main_engine_load_maneuver_ref = (current_shaft_power_man_ref / p_main_engine_mcr_ref) * 100
-                 me_propulsion_fuel_maneuver_ref = calculate_fuel(current_shaft_power_man_ref, main_engine_load_maneuver_ref, p_maneuver_duration, p_sfoc_data)
+                 # DEĞİŞİKLİK: Geleneksel ana makine için doğru SFOC verisi kullanılıyor.
+                 me_propulsion_fuel_maneuver_ref = calculate_fuel(current_shaft_power_man_ref, main_engine_load_maneuver_ref, p_maneuver_duration, SFOC_DATA_MAIN_ENGINE)
                  me_propulsion_fuel_maneuver_ref = me_propulsion_fuel_maneuver_ref if me_propulsion_fuel_maneuver_ref > 0 else 0
             
             total_aux_dg_fuel_maneuver_ref = 0
             if p_current_aux_power_demand_kw > 0 and p_current_conv_aux_dg_mcr_kw > 0 and SABIT_YARDIMCI_DG_SAYISI_MANEVRA_REF > 0:
                 power_per_aux_dg_ref = p_current_aux_power_demand_kw / SABIT_YARDIMCI_DG_SAYISI_MANEVRA_REF
-                if power_per_aux_dg_ref <= p_current_conv_aux_dg_mcr_kw: # Kapasite kontrolü
+                if power_per_aux_dg_ref <= p_current_conv_aux_dg_mcr_kw:
                     load_per_aux_dg_percent_ref = (power_per_aux_dg_ref / p_current_conv_aux_dg_mcr_kw) * 100
                     if load_per_aux_dg_percent_ref >=0:
-                        fuel_one_dg_ref = calculate_fuel(power_per_aux_dg_ref, load_per_aux_dg_percent_ref, p_maneuver_duration, p_sfoc_data)
+                        # DEĞİŞİKLİK: Geleneksel yardımcı jeneratör için doğru SFOC verisi kullanılıyor.
+                        fuel_one_dg_ref = calculate_fuel(power_per_aux_dg_ref, load_per_aux_dg_percent_ref, p_maneuver_duration, SFOC_DATA_AUX_DG)
                         if fuel_one_dg_ref > 0:
                             total_aux_dg_fuel_maneuver_ref = fuel_one_dg_ref * SABIT_YARDIMCI_DG_SAYISI_MANEVRA_REF
             
             total_conventional_maneuver_fuel_point_ref = me_propulsion_fuel_maneuver_ref + total_aux_dg_fuel_maneuver_ref
             if total_conventional_maneuver_fuel_point_ref > 0:
                 total_maneuver_fuel_main_engine_ref += total_conventional_maneuver_fuel_point_ref
+                # Orijinal koddaki gibi listeye ekleme
                 detailed_data_list.append({
                     "Combo": "Ana Makine Referans", "SpecificComboUsed": "Ana Makine Referans", "Mode": "Manevra",
                     "Shaft Power (kW)": current_shaft_power_man_ref, "Required DE Power (kW)": np.nan,
@@ -130,56 +130,48 @@ def render_page():
                 })
 
         # --- 2. Yeni Jeneratör Konfigürasyonu için Tüketimi Hesapla ---
+        # Bu bölümdeki mantık orijinal haliyle korunuyor
         current_combo_total_sea_fuel_gens = 0
         current_combo_total_maneuver_fuel_gens = 0
         gen_config_label = f"{p_main_gen_qty}x{p_main_gen_mcr}kW Ana"
         if p_port_gen_qty > 0 and p_port_gen_mcr > 0:
             gen_config_label += f" + {p_port_gen_qty}x{p_port_gen_mcr}kW Liman"
         
-        for mode_params in [(p_sea_power_range, p_sea_duration, "Seyir"), \
-                            (p_maneuver_power_range, p_maneuver_duration, "Manevra")]:
+        for mode_params in [(p_sea_power_range, p_sea_duration, "Seyir"), (p_maneuver_power_range, p_maneuver_duration, "Manevra")]:
             power_range, duration, mode_label = mode_params
             for shaft_power_loop_input in range(power_range[0], power_range[1] + 100, 100):
+                # Orijinal koddaki güç hesaplama mantığı korunuyor
                 current_P_pervane_hedef = max(0, shaft_power_loop_input)
-                
                 required_de_power_for_prop = 0.0
                 de_power_for_auxiliary = 0.0
                 total_de_power_for_get_best_combination = 0.0
 
                 if mode_label == "Seyir":
-                    # DE SEYİR HESAPLAMASI (DEĞİŞİKLİK YOK - Sizin son paylaştığınız koddaki gibi ana tahrik + direkt yardımcı güç)
-                    # p_conventional_shaft_eff_arg, config'den gelen CONVENTIONAL_SHAFT_EFFICIENCY (0.95) değerini alır.
-                    # p_total_elec_eff_factor_arg, sidebar'daki 4 verimliliğin çarpımıdır.
                     power_basis_for_de_prop_sea = current_P_pervane_hedef * p_conventional_shaft_eff_arg 
-                    
-                    if p_total_elec_eff_factor_arg > 1e-9: # Sıfıra bölme kontrolü
+                    if p_total_elec_eff_factor_arg > 1e-9:
                         required_de_power_for_prop = power_basis_for_de_prop_sea / p_total_elec_eff_factor_arg
-                    elif power_basis_for_de_prop_sea > 0: # Verimlilik sıfırken güç isteniyorsa sonsuz
+                    elif power_basis_for_de_prop_sea > 0:
                         required_de_power_for_prop = float('inf')
-                    # else: required_de_power_for_prop = 0 kalır
-                    
                     de_power_for_auxiliary = p_current_aux_power_demand_kw if p_current_aux_power_demand_kw > 0 else 0.0
                     total_de_power_for_get_best_combination = required_de_power_for_prop 
 
                 elif mode_label == "Manevra":
-                    # DE MANEVRA (GÜNCELLENDİ - "Yakıt Analizi" sayfasıyla BİREBİR AYNI MANTIK):
-                    # 1. Tahrik için gereken DE jeneratör çıkış gücü
-                    required_de_power_for_prop = current_P_pervane_hedef * PROPULSION_PATH_INV_EFFICIENCY # (0.95/0.93 faktörü)
-                    
-                    # 2. Manevrada yardımcı yük için gereken DE jeneratör çıkış gücü (DOĞRUDAN eklenir)
+                    required_de_power_for_prop = current_P_pervane_hedef * PROPULSION_PATH_INV_EFFICIENCY
                     de_power_for_auxiliary = p_current_aux_power_demand_kw if p_current_aux_power_demand_kw > 0 else 0.0
-                    
                     total_de_power_for_get_best_combination = required_de_power_for_prop + de_power_for_auxiliary
                 
                 if total_de_power_for_get_best_combination <= 0 or not np.isfinite(total_de_power_for_get_best_combination):
                     continue
 
+                # DEĞİŞİKLİK: get_best_combination'a ALL_SFOC_CURVES sözlüğü veriliyor.
                 fuel_total, combo_label_used, loads_info_list, original_main_details = get_best_combination(
                     total_de_power_for_get_best_combination,
                     p_main_gen_mcr, p_main_gen_qty, p_port_gen_mcr, p_port_gen_qty,
-                    p_sfoc_data, duration
+                    ALL_SFOC_CURVES,
+                    duration
                 )
 
+                # Kodun geri kalanı orijinal haliyle korunuyor...
                 if fuel_total > 0 and loads_info_list:
                     if mode_label == "Seyir": current_combo_total_sea_fuel_gens += fuel_total
                     else: current_combo_total_maneuver_fuel_gens += fuel_total
@@ -211,6 +203,7 @@ def render_page():
                             "N_running_combo": len(loads_info_list)
                         })
         
+        # Orijinal kodun sonundaki özetleme mantığı korunuyor
         if current_combo_total_sea_fuel_gens > 0 or current_combo_total_maneuver_fuel_gens > 0:
             sea_diff = total_sea_fuel_main_engine_ref - current_combo_total_sea_fuel_gens
             maneuver_diff = total_maneuver_fuel_main_engine_ref - current_combo_total_maneuver_fuel_gens
@@ -224,39 +217,39 @@ def render_page():
         elif not results_summary_list and (total_sea_fuel_main_engine_ref > 0 or total_maneuver_fuel_main_engine_ref > 0):
              results_summary_list.append({
                 "Jeneratör Konfigürasyonu": gen_config_label + " (Jeneratörler Çalıştırılamadı/Verimsiz)",
-                "Toplam Seyir Yakıtı (Jeneratörler) (ton)": 0,
-                "Toplam Manevra Yakıtı (Jeneratörler) (ton)": 0,
+                "Toplam Seyir Yakıtı (Jeneratörler) (ton)": 0, "Toplam Manevra Yakıtı (Jeneratörler) (ton)": 0,
                 "Seyir Yakıt Farkı (Ana M. Ref. - Jen) (ton)": round(total_sea_fuel_main_engine_ref, 2),
                 "Manevra Yakıt Farkı (Ana M. Ref. - Jen) (ton)": round(total_maneuver_fuel_main_engine_ref, 2)
             })
         return pd.DataFrame(results_summary_list), pd.DataFrame(detailed_data_list), pd.DataFrame(generator_usage_data_list)
 
-    # "HESAPLA" butonu fonksiyon çağrısı (argümanlar güncellenmişti, bu haliyle doğru)
+    # "HESAPLA" butonu fonksiyon çağrısı güncelleniyor
     if st.sidebar.button("Yeni Kombinasyon HESAPLA", key="nc_calculate_button"):
         if total_elec_eff_new_factor < 1e-9 and sea_power_range_new[1] > sea_power_range_new[0]:
-             st.error("Hesaplama yapılamadı: Seyir modu için toplam elektriksel verimlilik faktörü (motor*konv*pano*alt) çok düşük.")
+             st.error("Hesaplama yapılamadı: Seyir modu için toplam elektriksel verimlilik faktörü çok düşük.")
              st.session_state.nc_show_results = False
              st.session_state.nc_results_df = pd.DataFrame(); st.session_state.nc_detailed_df = pd.DataFrame(); st.session_state.nc_usage_df = pd.DataFrame()
-        elif nc_aux_power_demand_input > 0 and nc_conv_aux_dg_mcr_input <= 0 : # nc_conv_aux_dg_mcr_input pozitif olmalı
-            st.error("Manevra için yardımcı güç ihtiyacı girilmiş ancak Referans Yardımcı DG MCR değeri pozitif değil veya sıfır.")
+        elif nc_aux_power_demand_input > 0 and nc_conv_aux_dg_mcr_input <= 0 :
+            st.error("Manevra için yardımcı güç ihtiyacı girilmiş ancak Referans Yardımcı DG MCR değeri pozitif değil.")
             st.session_state.nc_show_results = False
             st.session_state.nc_results_df = pd.DataFrame(); st.session_state.nc_detailed_df = pd.DataFrame(); st.session_state.nc_usage_df = pd.DataFrame()
         else:
+            # DEĞİŞİKLİK: Fonksiyon çağrısından p_sfoc_data argümanı kaldırılıyor.
             st.session_state.nc_results_df, st.session_state.nc_detailed_df, st.session_state.nc_usage_df = \
                 calculate_all_results_for_new_combinations(
                     main_gen_mcr_new, main_gen_qty_new, port_gen_mcr_new, port_gen_qty_new,
                     sea_power_range_new, maneuver_power_range_new,
                     sea_duration_new, maneuver_duration_new,
                     main_engine_mcr_ref_new,
-                    total_elec_eff_new_factor,       # Seyir DE ana tahrik hesabı için
-                    CONVENTIONAL_SHAFT_EFFICIENCY,   # Seyir DE ana tahrik hesabı için (config'den)
-                    sfoc_data_global,
+                    total_elec_eff_new_factor,
+                    CONVENTIONAL_SHAFT_EFFICIENCY,
                     nc_aux_power_demand_input,
                     nc_conv_aux_dg_mcr_input
                 )
             st.session_state.nc_show_results = True
             if st.session_state.nc_results_df.empty and st.session_state.nc_detailed_df.empty:
                 st.warning("Hesaplama yapıldı ancak 'Yeni Kombinasyonlar' için gösterilecek sonuç bulunamadı.")
+                
     # --- Sonuçları Göster (Bu kısım öncekiyle aynı kalabilir) ---
     if st.session_state.nc_show_results and not st.session_state.nc_results_df.empty:
         st.subheader("Özet Sonuçlar (Yeni Kombinasyon)")

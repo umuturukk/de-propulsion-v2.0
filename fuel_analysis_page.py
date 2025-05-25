@@ -6,7 +6,13 @@ import plotly.express as px
 import graphviz # Eğer graphviz kurulu değilse: pip install graphviz streamlit-agraph
 
 # Proje içi modüllerden importlar
-from config import sfoc_data_global, SFOC_DATA_AUX_DG, SFOC_DATA_MAIN_ENGINE, SFOC_DATA_MAIN_DE_GEN, SFOC_DATA_PORT_GEN, ALL_SFOC_CURVES
+# DEĞİŞİKLİK: İlgili SFOC verileri doğrudan import ediliyor
+from config import (
+    SFOC_DATA_MAIN_ENGINE,
+    SFOC_DATA_AUX_DG,
+    SFOC_DATA_MAIN_DE_GEN,
+    ALL_SFOC_CURVES
+)
 from core_calculations import (
     determine_generator_usage,
     interpolate_sfoc_non_linear, # SFOC eğrisi çizimi için
@@ -33,12 +39,6 @@ def render_page():
     if "fa_usage_df" not in st.session_state: st.session_state.fa_usage_df = pd.DataFrame()
     if "fa_show_fuel_results" not in st.session_state: st.session_state.fa_show_fuel_results = False
 
-    # @st.cache_data
-    # Streamlit'in cache'leme mekanizması, argümanların hashlenebilir olmasını gerektirir.
-    # Tuple'lar hashlenebilir. global_sfoc_data bir dict olduğu için doğrudan cache'lenemez.
-    # Ancak dict içeriği değişmiyorsa sorun olmaz. Veya dict'i tuple'a çevirip argüman olarak geçebilirsiniz.
-    # Şimdilik global olduğu için calculate_all_results_for_fuel_analysis içine doğrudan kullanılıyor.
-    # Daha iyi bir yöntem, sfoc_data'yı argüman olarak almasıdır.
     @st.cache_data
     def calculate_all_results_for_fuel_analysis(
         current_gen_power_range, current_sea_power_range, current_maneuver_power_range,
@@ -46,21 +46,20 @@ def render_page():
         current_aux_power_demand_kw, # Hem seyir hem manevra için ortak yardımcı güç
         current_conv_aux_dg_mcr_kw # Geleneksel manevra için yardımcı DG MCR'ı
     ):
-        current_sfoc_data = sfoc_data_global
+        # DEĞİŞİKLİK: sfoc_data_global kullanımı kaldırıldı.
         results_summary_list = []
         detailed_data_list = []
         generator_usage_data_list = []
 
         # --- 1. Ana Makine Referans Verileri ---
-        # Seyir Modu - Ana Makine (DEĞİŞİKLİK YOK)
+        # Seyir Modu - Ana Makine
         total_sea_fuel_main_engine_overall = 0
-        # ... (Mevcut ana makine seyir yakıt hesaplama kodunuz aynı kalacak,
-        #      total_sea_fuel_main_engine_overall ve detailed_data_list'e eklemeler yapılacak) ...
         for shaft_power_sea in range(current_sea_power_range[0], current_sea_power_range[1] + 100, 100):
             if shaft_power_sea <= 0 or current_main_engine_mcr <= 0: continue
             main_engine_load_sea = (shaft_power_sea / current_main_engine_mcr) * 100
             if main_engine_load_sea > 0:
-                fuel_main_ref_sea = calculate_fuel(shaft_power_sea, main_engine_load_sea, current_sea_duration, current_sfoc_data)
+                # DEĞİŞİKLİK: Ana makine için doğru SFOC verisi kullanılıyor.
+                fuel_main_ref_sea = calculate_fuel(shaft_power_sea, main_engine_load_sea, current_sea_duration, SFOC_DATA_MAIN_ENGINE)
                 if fuel_main_ref_sea > 0:
                     total_sea_fuel_main_engine_overall += fuel_main_ref_sea
                     detailed_data_list.append({
@@ -70,30 +69,31 @@ def render_page():
                     })
 
         # Manevra Modu - Ana Makine (GÜNCELLENMİŞ HESAPLAMA: ME + Yardımcı DG'ler)
-        total_maneuver_fuel_main_engine_overall = 0 # Bu, ME + Aux DG toplamını tutacak
+        total_maneuver_fuel_main_engine_overall = 0
         SABIT_YARDIMCI_DG_SAYISI_MANEVRA = 2
         for shaft_power_maneuver in range(current_maneuver_power_range[0], current_maneuver_power_range[1] + 100, 100):
-            current_shaft_power_man = max(0, shaft_power_maneuver) # Negatif olmasın
+            current_shaft_power_man = max(0, shaft_power_maneuver)
 
             me_propulsion_fuel_maneuver = 0
             main_engine_load_maneuver = 0
             if current_main_engine_mcr > 0:
                  main_engine_load_maneuver = (current_shaft_power_man / current_main_engine_mcr) * 100
                  if main_engine_load_maneuver >= 0:
-                    me_propulsion_fuel_maneuver = calculate_fuel(current_shaft_power_man, main_engine_load_maneuver, current_maneuver_duration, current_sfoc_data)
+                    # DEĞİŞİKLİK: Ana makine için doğru SFOC verisi kullanılıyor.
+                    me_propulsion_fuel_maneuver = calculate_fuel(current_shaft_power_man, main_engine_load_maneuver, current_maneuver_duration, SFOC_DATA_MAIN_ENGINE)
                     me_propulsion_fuel_maneuver = me_propulsion_fuel_maneuver if me_propulsion_fuel_maneuver > 0 else 0
             
             total_aux_dg_fuel_maneuver = 0
             load_per_aux_dg_percent = 0
             if current_aux_power_demand_kw > 0 and current_conv_aux_dg_mcr_kw > 0 and SABIT_YARDIMCI_DG_SAYISI_MANEVRA > 0:
                 power_per_aux_dg = current_aux_power_demand_kw / SABIT_YARDIMCI_DG_SAYISI_MANEVRA
-                if power_per_aux_dg <= current_conv_aux_dg_mcr_kw: # Her bir DG kendi MCR'ını aşmıyorsa
+                if power_per_aux_dg <= current_conv_aux_dg_mcr_kw:
                     load_per_aux_dg_percent = (power_per_aux_dg / current_conv_aux_dg_mcr_kw) * 100
                     if load_per_aux_dg_percent >= 0:
-                        fuel_one_dg = calculate_fuel(power_per_aux_dg, load_per_aux_dg_percent, current_maneuver_duration, current_sfoc_data)
+                        # DEĞİŞİKLİK: Yardımcı jeneratör için doğru SFOC verisi kullanılıyor.
+                        fuel_one_dg = calculate_fuel(power_per_aux_dg, load_per_aux_dg_percent, current_maneuver_duration, SFOC_DATA_AUX_DG)
                         if fuel_one_dg > 0:
                             total_aux_dg_fuel_maneuver = fuel_one_dg * SABIT_YARDIMCI_DG_SAYISI_MANEVRA
-                # else: DG MCR'ı aşıyorsa ne yapılacağı burada tanımlanabilir (örn. uyarı, hesaplama yapmama)
                             
             total_conventional_maneuver_fuel_point = me_propulsion_fuel_maneuver + total_aux_dg_fuel_maneuver
 
@@ -108,7 +108,7 @@ def render_page():
 
         # --- 2. Jeneratör Verilerini Hesapla (DE Sistemi) ---
         propulsion_path_inv_efficiency = 0.95 / (0.97*0.985*0.995*0.98)
-        AUX_PATH_EFFICIENCY_FOR_DE_SEA_AUX = 0.968 # SADECE DE SEYİR YARDIMCI İÇİN KULLANILACAK
+        AUX_PATH_EFFICIENCY_FOR_DE_SEA_AUX = 0.968
 
         for gen_power_unit in range(current_gen_power_range[0], current_gen_power_range[1] + 100, 100):
             if gen_power_unit <= 0: continue
@@ -116,22 +116,17 @@ def render_page():
             current_combo_total_sea_fuel_generators = 0
             current_combo_total_maneuver_fuel_generators = 0
 
-            # Seyir modu - Jeneratörler (DEĞİŞTİRİLMİŞ - "ÖNCEKİ" STABİL HALİNE DÖNÜŞ)
+            # Seyir modu - Jeneratörler
             for shaft_power_from_slider_sea in range(current_sea_power_range[0], current_sea_power_range[1] + 100, 100):
                 current_shaft_power_sea = max(0, shaft_power_from_slider_sea)
-
-                # Tahrik için DE gücü: Şaft gücünden yardımcı düşülerek hesaplanır
                 effective_shaft_power_for_propulsion_sea = max(0, current_shaft_power_sea - current_aux_power_demand_kw)
                 de_power_for_propulsion_sea = effective_shaft_power_for_propulsion_sea * propulsion_path_inv_efficiency
-                
-                # Yardımcı yük için DE gücü: 0.968 verimliliği ile hesaplanır
                 de_power_for_auxiliary_sea = 0
                 if current_aux_power_demand_kw > 0:
                     if AUX_PATH_EFFICIENCY_FOR_DE_SEA_AUX > 0:
                         de_power_for_auxiliary_sea = current_aux_power_demand_kw / AUX_PATH_EFFICIENCY_FOR_DE_SEA_AUX
                     else:
                         de_power_for_auxiliary_sea = float('inf')
-                
                 total_de_power_on_generators_sea = de_power_for_propulsion_sea + de_power_for_auxiliary_sea
 
                 if total_de_power_on_generators_sea <= 0 or not np.isfinite(total_de_power_on_generators_sea):
@@ -139,7 +134,8 @@ def render_page():
 
                 ngen_sea, load_sea = determine_generator_usage(total_de_power_on_generators_sea, gen_power_unit)
                 if ngen_sea is not None and load_sea is not None:
-                    fuel_gen_sea = calculate_fuel(total_de_power_on_generators_sea, load_sea, current_sea_duration, current_sfoc_data)
+                    # DEĞİŞİKLİK: Dizel Elektrik ana jeneratörleri için doğru SFOC verisi kullanılıyor.
+                    fuel_gen_sea = calculate_fuel(total_de_power_on_generators_sea, load_sea, current_sea_duration, SFOC_DATA_MAIN_DE_GEN)
                     if fuel_gen_sea > 0:
                         current_combo_total_sea_fuel_generators += fuel_gen_sea
                         detailed_data_list.append({
@@ -153,16 +149,11 @@ def render_page():
                             "Generators Used": ngen_sea, "Load Per Generator (%)": round(load_sea, 2)
                         })
 
-            # Manevra modu - Jeneratörler (YENİ İSTENEN MANTIK)
+            # Manevra modu - Jeneratörler
             for shaft_power_from_slider_maneuver in range(current_maneuver_power_range[0], current_maneuver_power_range[1] + 100, 100):
                 current_shaft_power_man = max(0, shaft_power_from_slider_maneuver)
-
-                # Ana tahrik için DE gücü: Tam şaft gücünden hesaplanır
                 de_power_for_propulsion_man = current_shaft_power_man * propulsion_path_inv_efficiency
-                
-                # Yardımcı yük için DE gücü: Doğrudan eklenir (0.968'e BÖLÜNMEZ)
                 de_power_for_auxiliary_man = current_aux_power_demand_kw if current_aux_power_demand_kw > 0 else 0
-                
                 total_de_power_on_generators_man = de_power_for_propulsion_man + de_power_for_auxiliary_man
 
                 if total_de_power_on_generators_man <= 0 or not np.isfinite(total_de_power_on_generators_man):
@@ -170,7 +161,8 @@ def render_page():
                 
                 ngen_maneuver, load_maneuver = determine_generator_usage(total_de_power_on_generators_man, gen_power_unit)
                 if ngen_maneuver is not None and load_maneuver is not None:
-                    fuel_gen_maneuver = calculate_fuel(total_de_power_on_generators_man, load_maneuver, current_maneuver_duration, current_sfoc_data)
+                    # DEĞİŞİKLİK: Dizel Elektrik ana jeneratörleri için doğru SFOC verisi kullanılıyor.
+                    fuel_gen_maneuver = calculate_fuel(total_de_power_on_generators_man, load_maneuver, current_maneuver_duration, SFOC_DATA_MAIN_DE_GEN)
                     if fuel_gen_maneuver > 0:
                         current_combo_total_maneuver_fuel_generators += fuel_gen_maneuver
                         detailed_data_list.append({
@@ -184,7 +176,6 @@ def render_page():
                             "Generators Used": ngen_maneuver, "Load Per Generator (%)": round(load_maneuver, 2)
                         })
             
-            # ... (results_summary_list'e ekleme kısmı aynı kalacak) ...
             if current_combo_total_sea_fuel_generators > 0 or current_combo_total_maneuver_fuel_generators > 0:
                 sea_diff = total_sea_fuel_main_engine_overall - current_combo_total_sea_fuel_generators
                 canal_passage_diff = total_maneuver_fuel_main_engine_overall - current_combo_total_maneuver_fuel_generators
@@ -200,19 +191,19 @@ def render_page():
         
         return pd.DataFrame(results_summary_list), pd.DataFrame(detailed_data_list), pd.DataFrame(generator_usage_data_list)
 
-    # "HESAPLA" butonu fonksiyon çağrısını yeni argümanla güncelle
+    # ... Kodun geri kalanı orijinal haliyle korunuyor ...
+    # "HESAPLA" butonu ve sonrası olduğu gibi kalır.
     if st.sidebar.button("HESAPLA", key="fa_calculate_button"):
         st.session_state.fa_show_fuel_results = True
         st.session_state.fa_results_df, st.session_state.fa_detailed_df, st.session_state.fa_usage_df = \
             calculate_all_results_for_fuel_analysis(
                 gen_power_range_input, sea_power_range_input, maneuver_power_range_input,
                 sea_duration_input, maneuver_duration_input, main_engine_mcr_input,
-                aux_power_demand_input, # Ortak yardımcı güç
-                conv_aux_dg_mcr_input   # Geleneksel manevra için DG MCR'ı
+                aux_power_demand_input,
+                conv_aux_dg_mcr_input
             )
         if st.session_state.fa_results_df.empty and st.session_state.fa_detailed_df.empty:
              st.warning("Hesaplama yapıldı ancak 'Yakıt Analizi' için gösterilecek sonuç bulunamadı. Girdilerinizi kontrol edin.")
-
 
     st.header("Jeneratör ve Ana Makine Yakıt Tüketim Analizi")
 
@@ -320,8 +311,8 @@ def render_page():
     st.markdown("---")
     st.subheader("Özgül Yakıt Tüketimi (SFOC) - Yük Eğrisi (Genel)")
     # Global SFOC verisini ve interpolate_sfoc_non_linear fonksiyonunu kullan
-    loads_original = list(SFOC_DATA_MAIN_ENGINE.keys())
-    sfocs_original = list(SFOC_DATA_MAIN_ENGINE.values())
+    loads_original = list(SFOC_DATA_AUX_DG.keys())
+    sfocs_original = list(SFOC_DATA_AUX_DG.values())
     sorted_indices = np.argsort(loads_original)
     sorted_loads_original = np.array(loads_original)[sorted_indices]
     sorted_sfocs_original = np.array(sfocs_original)[sorted_indices]
@@ -329,7 +320,7 @@ def render_page():
     df_sfoc_points = pd.DataFrame({'Yük (%)': sorted_loads_original, 'SFOC (g/kWh)': sorted_sfocs_original})
     plot_min_load, plot_max_load = 0, 110 # Grafik için yük aralığı
     interpolated_loads = np.linspace(plot_min_load, plot_max_load, 200) # Eğri için daha sık noktalar
-    interpolated_sfocs = [interpolate_sfoc_non_linear(load, SFOC_DATA_MAIN_ENGINE) for load in interpolated_loads]
+    interpolated_sfocs = [interpolate_sfoc_non_linear(load, SFOC_DATA_AUX_DG) for load in interpolated_loads]
 
     # Geçerli (None olmayan ve makul) SFOC değerlerini filtrele
     valid_interpolated_data = [(load, sfoc) for load, sfoc in zip(interpolated_loads, interpolated_sfocs) if sfoc is not None and sfoc >= 50]
