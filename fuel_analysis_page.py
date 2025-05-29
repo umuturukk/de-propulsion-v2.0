@@ -308,40 +308,80 @@ def render_page():
         # Bu kontrol, HESAPLA butonuna basıldıktan sonra boş DataFrame'ler döndüğünde çalışır.
         st.warning("Girilen parametrelerle 'Yakıt Analizi' için hesaplanacak uygun bir senaryo bulunamadı.")
 
-    # --- SFOC - Yük Eğrisi Grafiği ---
+    # --- SFOC - Yük Eğrisi Grafiği (Kullanıcı Seçimli) ---
     st.markdown("---")
-    st.subheader("Özgül Yakıt Tüketimi (SFOC) - Yük Eğrisi (Genel)")
-    # Global SFOC verisini ve interpolate_sfoc_non_linear fonksiyonunu kullan
-    loads_original = list(SFOC_DATA_PORT_GEN.keys())
-    sfocs_original = list(SFOC_DATA_PORT_GEN.values())
-    sorted_indices = np.argsort(loads_original)
-    sorted_loads_original = np.array(loads_original)[sorted_indices]
-    sorted_sfocs_original = np.array(sfocs_original)[sorted_indices]
+    st.subheader("Özgül Yakıt Tüketimi (SFOC) - Yük Eğrisi")
 
-    df_sfoc_points = pd.DataFrame({'Yük (%)': sorted_loads_original, 'SFOC (g/kWh)': sorted_sfocs_original})
-    plot_min_load, plot_max_load = 0, 110 # Grafik için yük aralığı
-    interpolated_loads = np.linspace(plot_min_load, plot_max_load, 200) # Eğri için daha sık noktalar
-    interpolated_sfocs = [interpolate_sfoc_non_linear(load, SFOC_DATA_PORT_GEN) for load in interpolated_loads]
+    # Kullanıcının makine tipi seçmesi için bir selectbox oluştur
+    # ALL_SFOC_CURVES sözlüğünü config.py'den import ettiğinizden emin olun.
+    # (Bu importun dosyanın başında yapıldığını varsayıyorum)
 
-    # Geçerli (None olmayan ve makul) SFOC değerlerini filtrele
-    valid_interpolated_data = [(load, sfoc) for load, sfoc in zip(interpolated_loads, interpolated_sfocs) if sfoc is not None and sfoc >= 50]
-    if valid_interpolated_data:
-        interpolated_loads_valid, interpolated_sfocs_valid = zip(*valid_interpolated_data)
-        df_sfoc_curve = pd.DataFrame({'Yük (%)': interpolated_loads_valid, 'SFOC (g/kWh)': interpolated_sfocs_valid})
+    sfoc_option_labels = {
+        "main_engine": "Ana Makine (Geleneksel)",
+        "main_de_gen": "Ana Dizel Jeneratör (DE)",
+        "port_gen": "Liman Jeneratörü (DE)",
+        "aux_dg": "Yardımcı Dizel Jeneratör (Geleneksel)"
+    }
+    # ALL_SFOC_CURVES anahtarlarının sfoc_option_labels'da olduğundan emin olalım
+    display_options = [sfoc_option_labels.get(key, key.replace("_", " ").title()) for key in ALL_SFOC_CURVES.keys()]
+    
+    # Seçilen etiketi tekrar anahtara çevirmek için ters bir eşleme
+    # Bu eşlemenin sadece sfoc_option_labels'da tanımlı anahtarlar için doğru çalışacağına dikkat edin.
+    key_map = {label: key for key, label in sfoc_option_labels.items()}
 
-        fig_sfoc_display = px.line(df_sfoc_curve, x='Yük (%)', y='SFOC (g/kWh)',
-                                 title='Jeneratör SFOC vs. Yük Yüzdesi (İnterpolasyonlu)',
-                                 labels={'Yük (%)': 'Jeneratör Yükü (%)', 'SFOC (g/kWh)': 'SFOC (g/kWh)'})
-        fig_sfoc_display.add_scatter(x=df_sfoc_points['Yük (%)'], y=df_sfoc_points['SFOC (g/kWh)'],
-                                   mode='markers', name='Orjinal Veri Noktaları',
-                                   marker=dict(color='red', size=10, symbol='circle'))
-        min_y_display = max(0, df_sfoc_points['SFOC (g/kWh)'].min() - 10) # Y ekseni aralığı
-        max_y_display = df_sfoc_points['SFOC (g/kWh)'].max() + 10
-        fig_sfoc_display.update_yaxes(range=[min_y_display, max_y_display])
-        fig_sfoc_display.update_xaxes(range=[plot_min_load - 5, plot_max_load + 5]) # X ekseni aralığı
-        st.plotly_chart(fig_sfoc_display, use_container_width=True)
+    selected_sfoc_label = st.selectbox(
+        "SFOC Eğrisini Görmek İstediğiniz Makine Tipini Seçin:",
+        options=display_options,
+        key="fa_sfoc_curve_selector" 
+    )
+
+    # Seçilen etikete karşılık gelen SFOC veri anahtarını al
+    # Eğer etiket sfoc_option_labels'da yoksa, etiketi doğrudan anahtar olarak kullanmayı dene (bu pek olası değil)
+    selected_sfoc_key = key_map.get(selected_sfoc_label, selected_sfoc_label.lower().replace(" ", "_"))
+
+
+    if selected_sfoc_key and selected_sfoc_key in ALL_SFOC_CURVES:
+        sfoc_data_to_plot = ALL_SFOC_CURVES[selected_sfoc_key]
+
+        if sfoc_data_to_plot and isinstance(sfoc_data_to_plot, dict) and len(sfoc_data_to_plot) >= 2:
+            loads_original = list(sfoc_data_to_plot.keys())
+            sfocs_original = list(sfoc_data_to_plot.values())
+            
+            sorted_indices = np.argsort(loads_original)
+            sorted_loads_original = np.array(loads_original)[sorted_indices]
+            sorted_sfocs_original = np.array(sfocs_original)[sorted_indices]
+
+            df_sfoc_points = pd.DataFrame({'Yük (%)': sorted_loads_original, 'SFOC (g/kWh)': sorted_sfocs_original})
+            
+            plot_min_load, plot_max_load = 0, 110 
+            interpolated_loads = np.linspace(plot_min_load, plot_max_load, 200)
+            
+            interpolated_sfocs = [interpolate_sfoc_non_linear(load, sfoc_data_to_plot) for load in interpolated_loads]
+
+            valid_interpolated_data = [(load, sfoc) for load, sfoc in zip(interpolated_loads, interpolated_sfocs) if sfoc is not None and sfoc >= 50]
+            
+            if valid_interpolated_data:
+                interpolated_loads_valid, interpolated_sfocs_valid = zip(*valid_interpolated_data)
+                df_sfoc_curve = pd.DataFrame({'Yük (%)': interpolated_loads_valid, 'SFOC (g/kWh)': interpolated_sfocs_valid})
+
+                fig_sfoc_display = px.line(df_sfoc_curve, x='Yük (%)', y='SFOC (g/kWh)',
+                                         title=f'{selected_sfoc_label} - SFOC vs. Yük Yüzdesi (İnterpolasyonlu)',
+                                         labels={'Yük (%)': 'Jeneratör Yükü (%)', 'SFOC (g/kWh)': 'SFOC (g/kWh)'})
+                fig_sfoc_display.add_scatter(x=df_sfoc_points['Yük (%)'], y=df_sfoc_points['SFOC (g/kWh)'],
+                                           mode='markers', name='Orjinal Veri Noktaları',
+                                           marker=dict(color='red', size=10, symbol='circle'))
+                
+                min_y_display = max(0, df_sfoc_points['SFOC (g/kWh)'].min() - 10) if not df_sfoc_points.empty else 150
+                max_y_display = df_sfoc_points['SFOC (g/kWh)'].max() + 10 if not df_sfoc_points.empty else 250
+                fig_sfoc_display.update_yaxes(range=[min_y_display, max_y_display])
+                fig_sfoc_display.update_xaxes(range=[plot_min_load - 5, plot_max_load + 5])
+                st.plotly_chart(fig_sfoc_display, use_container_width=True)
+            else:
+                st.warning(f"{selected_sfoc_label} için SFOC eğrisi çizilemedi. İnterpolasyon için yeterli veya geçerli veri bulunamadı.")
+        else:
+            st.warning(f"{selected_sfoc_label} için SFOC verisi bulunamadı veya geçersiz. Lütfen config.py dosyasını kontrol edin.")
     else:
-        st.warning("SFOC eğrisi çizilemedi. SFOC verilerini ve interpolasyon fonksiyonunu kontrol edin.")
+        st.error(f"'{selected_sfoc_label}' için SFOC anahtarı bulunamadı veya geçersiz.")
 
     # --- Güç Akışı ve Kayıplar Diyagramı ---
     st.markdown("---")
