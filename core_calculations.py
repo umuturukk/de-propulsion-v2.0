@@ -179,7 +179,7 @@ def get_best_combination(required_de_power, main_mcr, main_qty, port_mcr, port_q
             # Önceki kodda range(89, 49, -5) idi, bu %89, %84, ..., %54, %49 yapar.
             # İstenen aralık %60-%85 ise range(85, 59, -5) olmalıydı.
             # %50-%89 için:
-            for target_port_load_percentage_try in range(89, 49, -5): 
+            for target_port_load_percentage_try in range(90, 40, -5):   
                 port_gen_power_output_try = port_mcr * (target_port_load_percentage_try / 100.0)
                 if port_gen_power_output_try > required_de_power + 1e-3 : continue
                 

@@ -19,8 +19,8 @@ st.set_page_config(
 # Ancak, mevcut kodunuzdaki radio butonlu sayfa seçimi korunmuştur.
 
 page_options = {
-    "Yakıt Analizi": fuel_analysis_page,
-    "Yeni Jeneratör Kombinasyonları": new_combinations_page
+    "Dizel Elektrik vs Geleneksel Sistem": fuel_analysis_page,
+    "Dizel Elektrik Sistemi (Küçük Jeneratör ile)": new_combinations_page
 }
 
 st.sidebar.title("Dizel Elektrik Tahrik Sistemi")

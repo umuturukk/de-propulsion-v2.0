@@ -206,7 +206,7 @@ def render_page():
         if st.session_state.fa_results_df.empty and st.session_state.fa_detailed_df.empty:
              st.warning("Hesaplama yapıldı ancak 'Yakıt Analizi' için gösterilecek sonuç bulunamadı. Girdilerinizi kontrol edin.")
 
-    st.header("Jeneratör ve Ana Makine Yakıt Tüketim Analizi")
+    st.header("Dizel Elektrik ve Geleneksel Sistem Yakıt Tüketim Analizi")
 
     if st.session_state.fa_show_fuel_results and not st.session_state.fa_results_df.empty:
         st.subheader("Özet Sonuçlar")
@@ -396,7 +396,7 @@ def render_page():
     st.sidebar.subheader("Sistem Verimlilikleri (%) (Diyagram İçin)")
     motor_eff_diag_perc = st.sidebar.slider("Diyagram - Elektrik Motoru Verimliliği (%)", 90.0, 99.9, 97.0, step=0.1, key="fa_diag_motor_eff")
     converter_eff_diag_perc = st.sidebar.slider("Diyagram - Frekans Konvertörü Verimliliği (%)", 90.0, 99.9, 98.5, step=0.1, key="fa_diag_converter_eff")
-    switchboard_eff_diag_perc = st.sidebar.slider("Diyagram - Pano Verimliliği (%)", 90.0, 99.9, 99.8, step=0.1, key="fa_diag_switchboard_eff")
+    switchboard_eff_diag_perc = st.sidebar.slider("Diyagram - Main Switchboard Verimliliği (%)", 90.0, 99.9, 99.8, step=0.1, key="fa_diag_switchboard_eff")
     generator_alt_eff_diag_perc = st.sidebar.slider("Diyagram - Alternatör Elektriksel Verimliliği (%)", 90.0, 99.9, 97.0, step=0.1, key="fa_diag_gen_alt_eff")
 
     # Hesaplama için verimlilikleri 0-1 aralığına çevir

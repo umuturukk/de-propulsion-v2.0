@@ -15,7 +15,7 @@ PROPULSION_PATH_INV_EFFICIENCY = 0.95 / 0.93
 
 # Ana Makine (Geleneksel Tahrik) için SFOC Verileri (load-% : g/kWh)
 SFOC_DATA_MAIN_ENGINE = {
-    25: 215,  # Örnek değerler
+    25: 205,  # Örnek değerler
     50: 195,
     75: 186,
     85: 184,
